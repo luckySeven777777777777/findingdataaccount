@@ -102,19 +102,17 @@ bot.on('text', async ctx => {
   let dupCount = 0
   let dupList = []
 
-  // ===== Track owners with IDs =====
-  if (!history.phoneOwners) history.phoneOwners = new Map() // phone -> Set of user IDs
-  if (!history.userOwners) history.userOwners = new Map()   // username -> Set of user IDs
-  if (!history.userNames) history.userNames = new Map()     // user ID -> displayName
+  // ===== Track owners by name =====
+  if (!history.phoneOwners) history.phoneOwners = new Map() // phone -> Set of names
+  if (!history.userOwners) history.userOwners = new Map()   // username -> Set of names
 
   const displayName = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || 'Unknown')
-  history.userNames.set(ctx.from.id, displayName)
 
   // ===== Process phones =====
   phones.forEach(p => {
     const np = normalizePhone(p)
     const owners = history.phoneOwners.get(np) || new Set()
-    owners.add(ctx.from.id)
+    owners.add(displayName)
     history.phoneOwners.set(np, owners)
     if (!history.phones.has(np)) {
       data.phonesDay.add(np)
@@ -130,7 +128,7 @@ bot.on('text', async ctx => {
   users.forEach(u => {
     const nu = u.toLowerCase()
     const owners = history.userOwners.get(nu) || new Set()
-    owners.add(ctx.from.id)
+    owners.add(displayName)
     history.userOwners.set(nu, owners)
     if (!history.users.has(nu)) {
       data.usersDay.add(nu)
@@ -142,28 +140,16 @@ bot.on('text', async ctx => {
     }
   })
 
-  // ===== Build duplicate owner messages =====
-  let dupOwnersText = ''
-  const dupEntities = []
+  // ===== Build duplicate owner message (text only) =====
+  let dupOwners = []
 
   phones.forEach(p => {
     const np = normalizePhone(p)
     const owners = history.phoneOwners.get(np)
     if (owners && owners.size > 1) {
-      const others = [...owners].filter(id => id !== ctx.from.id)
-      if (others.length) {
-        const names = others.map(id => history.userNames.get(id) || 'Unknown')
-        const text = `⚠️ You are sharing number ${np} with ${names.join(', ')}`
-        dupOwnersText += text + '\n'
-        others.forEach(id => {
-          dupEntities.push({
-            type: 'text_mention',
-            offset: dupOwnersText.indexOf(text),
-            length: text.length,
-            user: { id }
-          })
-        })
-      }
+      const others = [...owners].filter(n => n !== displayName)
+      if (others.length)
+        dupOwners.push(`⚠️ ${displayName} you are sharing number ${np} with ${others.join(', ')}`)
     }
   })
 
@@ -171,19 +157,9 @@ bot.on('text', async ctx => {
     const nu = u.toLowerCase()
     const owners = history.userOwners.get(nu)
     if (owners && owners.size > 1) {
-      const others = [...owners].filter(id => id !== ctx.from.id)
-      if (others.length) {
-        const text = `⚠️ You are sharing @${nu} with ${others.map(id => history.userNames.get(id) || 'Unknown').join(', ')}`
-        dupOwnersText += text + '\n'
-        others.forEach(id => {
-          dupEntities.push({
-            type: 'text_mention',
-            offset: dupOwnersText.indexOf(text),
-            length: text.length,
-            user: { id }
-          })
-        })
-      }
+      const others = [...owners].filter(n => n !== displayName)
+      if (others.length)
+        dupOwners.push(`⚠️ ${displayName} you are sharing ${nu} with ${others.join(', ')}`)
     }
   })
 
@@ -198,9 +174,9 @@ bot.on('text', async ctx => {
 📈 Daily Increase: ${data.phonesDay.size + data.usersDay.size}
 📊 Monthly Total: ${data.phonesMonth.size + data.usersMonth.size}
 📅 Time: ${now}
-${dupOwnersText}`
+${dupOwners.length ? dupOwners.join('\n') : ''}`
 
-  await ctx.reply(msg, dupEntities.length ? { entities: dupEntities } : {})
+  await ctx.reply(msg)
 })
 
 // ===== Export (Admin Only) =====
