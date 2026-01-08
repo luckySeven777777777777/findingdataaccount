@@ -140,7 +140,7 @@ bot.on('text', async ctx => {
     }
   })
 
-  // ===== Build duplicate owner message (text only) =====
+  // ===== Build duplicate owner message =====
   let dupOwners = []
 
   phones.forEach(p => {
@@ -149,7 +149,7 @@ bot.on('text', async ctx => {
     if (owners && owners.size > 1) {
       const others = [...owners].filter(n => n !== displayName)
       if (others.length)
-        dupOwners.push(`⚠️ ${displayName} you are sharing number ${np} with ${others.join(', ')}`)
+        dupOwners.push(`⚠️ you are sharing number ${np} with ${others.join(', ')}`)
     }
   })
 
@@ -159,7 +159,7 @@ bot.on('text', async ctx => {
     if (owners && owners.size > 1) {
       const others = [...owners].filter(n => n !== displayName)
       if (others.length)
-        dupOwners.push(`⚠️ ${displayName} you are sharing ${nu} with ${others.join(', ')}`)
+        dupOwners.push(`⚠️ you are sharing ${nu} with ${others.join(', ')}`)
     }
   })
 
