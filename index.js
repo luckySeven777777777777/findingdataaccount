@@ -6,13 +6,15 @@ import fs from 'fs'
 // ===== Bot Setup =====
 const bot = new Telegraf(process.env.BOT_TOKEN)
 
-// ===== In-memory store (Railway safe) =====
+// ===== In-memory store =====
 const store = new Map()
 
-// ===== History store (global, preload) =====
+// ===== History store =====
 store.set('HISTORY', {
   phones: new Set(),
-  users: new Set()
+  users: new Set(),
+  phoneOwners: new Map(), // phone -> Set of names
+  userOwners: new Map()   // username -> Set of names
 })
 
 // ===== Utility Functions =====
@@ -52,16 +54,11 @@ async function isAdmin(ctx) {
 
 // ===== Preload History from File =====
 function preloadHistory(file = 'history.txt') {
-  if (!fs.existsSync(file)) {
-    console.log('⚠️ history.txt not found, skip preload')
-    return
-  }
+  if (!fs.existsSync(file)) return
 
   const text = fs.readFileSync(file, 'utf8')
-
   const rawPhones = text.match(/[\+]?[\d\-\s]{7,}/g) || []
   const rawUsers = text.match(/@[a-zA-Z0-9_]{3,32}/g) || []
-
   const history = store.get('HISTORY')
 
   rawPhones.forEach(p => {
@@ -70,10 +67,7 @@ function preloadHistory(file = 'history.txt') {
   })
 
   rawUsers.forEach(u => history.users.add(u.toLowerCase()))
-
-  console.log(
-    `📚 History loaded: ${history.phones.size} phones, ${history.users.size} usernames`
-  )
+  console.log(`📚 History loaded: ${history.phones.size} phones, ${history.users.size} usernames`)
 }
 
 // ===== Message Listener =====
@@ -82,31 +76,24 @@ bot.on('text', async ctx => {
   const data = getUser(ctx.chat.id, ctx.from.id)
   const history = store.get('HISTORY')
 
-  // ===== Reset logic =====
+  // ===== Reset daily/monthly =====
   if (data.day !== today()) {
     data.day = today()
     data.phonesDay.clear()
     data.usersDay.clear()
   }
-
   if (data.month !== month()) {
     data.month = month()
     data.phonesMonth.clear()
     data.usersMonth.clear()
   }
 
-  // ===== Extract =====
   const phones = extractPhones(text)
   const users = extractMentions(text)
-
   let dupCount = 0
   let dupList = []
 
-  // ===== Track owners by name =====
-  if (!history.phoneOwners) history.phoneOwners = new Map() // phone -> Set of names
-  if (!history.userOwners) history.userOwners = new Map()   // username -> Set of names
-
-  const displayName = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || 'Unknown')
+  const displayName = ctx.from.first_name || 'Unknown'
 
   // ===== Process phones =====
   phones.forEach(p => {
@@ -114,6 +101,7 @@ bot.on('text', async ctx => {
     const owners = history.phoneOwners.get(np) || new Set()
     owners.add(displayName)
     history.phoneOwners.set(np, owners)
+
     if (!history.phones.has(np)) {
       data.phonesDay.add(np)
       data.phonesMonth.add(np)
@@ -130,6 +118,7 @@ bot.on('text', async ctx => {
     const owners = history.userOwners.get(nu) || new Set()
     owners.add(displayName)
     history.userOwners.set(nu, owners)
+
     if (!history.users.has(nu)) {
       data.usersDay.add(nu)
       data.usersMonth.add(nu)
@@ -140,32 +129,23 @@ bot.on('text', async ctx => {
     }
   })
 
-  // ===== Build duplicate owner message =====
+  // ===== Build duplicate messages =====
   let dupOwners = []
 
   phones.forEach(p => {
     const np = normalizePhone(p)
-    const owners = history.phoneOwners.get(np)
-    if (owners && owners.size > 1) {
-      const others = [...owners].filter(n => n !== displayName)
-      if (others.length)
-        dupOwners.push(`⚠️ you are sharing number ${np} with ${others.join(', ')}`)
-    }
+    const owners = [...(history.phoneOwners.get(np) || [])].filter(n => n !== displayName)
+    if (owners.length) dupOwners.push(`⚠️ you are sharing number ${np} with ${owners.join(', ')}`)
   })
 
   users.forEach(u => {
     const nu = u.toLowerCase()
-    const owners = history.userOwners.get(nu)
-    if (owners && owners.size > 1) {
-      const others = [...owners].filter(n => n !== displayName)
-      if (others.length)
-        dupOwners.push(`⚠️ you are sharing ${nu} with ${others.join(', ')}`)
-    }
+    const owners = [...(history.userOwners.get(nu) || [])].filter(n => n !== displayName)
+    if (owners.length) dupOwners.push(`⚠️ you are sharing ${nu} with ${owners.join(', ')}`)
   })
 
-  // ===== Auto reply =====
+  // ===== Reply =====
   const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Yangon' })
-
   const msg =
 `👤 User: ${ctx.from.first_name || ''}${ctx.from.last_name ? ' ' + ctx.from.last_name : ''} ${ctx.from.id}
 📝 Duplicate: ${dupCount ? `⚠️ ${dupList.join(', ')} (${dupCount})` : 'None'}
@@ -179,18 +159,14 @@ ${dupOwners.length ? dupOwners.join('\n') : ''}`
   await ctx.reply(msg)
 })
 
-// ===== Export (Admin Only) =====
+// ===== Export =====
 bot.command('export', async ctx => {
   if (!(await isAdmin(ctx))) return ctx.reply('❌ Admin only')
 
   const rows = []
   for (const [k, v] of store.entries()) {
     if (k === 'HISTORY') continue
-    rows.push({
-      key: k,
-      phones_month: v.phonesMonth.size,
-      users_month: v.usersMonth.size
-    })
+    rows.push({ key: k, phones_month: v.phonesMonth.size, users_month: v.usersMonth.size })
   }
 
   const ws = XLSX.utils.json_to_sheet(rows)
