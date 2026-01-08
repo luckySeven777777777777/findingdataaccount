@@ -102,39 +102,43 @@ bot.on('text', async ctx => {
   let dupCount = 0
   let dupList = []
 
-  // ===== Track owners =====
-  if (!history.phoneOwners) history.phoneOwners = new Map()
-  if (!history.userOwners) history.userOwners = new Map()
+  // ===== Track owners with IDs =====
+  if (!history.phoneOwners) history.phoneOwners = new Map() // phone -> Set of user IDs
+  if (!history.userOwners) history.userOwners = new Map()   // username -> Set of user IDs
+  if (!history.userNames) history.userNames = new Map()     // user ID -> displayName
 
+  const displayName = ctx.from.username ? `@${ctx.from.username}` : (ctx.from.first_name || 'Unknown')
+  history.userNames.set(ctx.from.id, displayName)
+
+  // ===== Process phones =====
   phones.forEach(p => {
     const np = normalizePhone(p)
-    if (history.phones.has(np) || data.phonesMonth.has(np)) {
-      dupCount++
-      dupList.push(np)
-      const owners = history.phoneOwners.get(np) || new Set()
-      owners.add(ctx.from.first_name || 'Unknown')
-      history.phoneOwners.set(np, owners)
-    } else {
+    const owners = history.phoneOwners.get(np) || new Set()
+    owners.add(ctx.from.id)
+    history.phoneOwners.set(np, owners)
+    if (!history.phones.has(np)) {
       data.phonesDay.add(np)
       data.phonesMonth.add(np)
       history.phones.add(np)
-      history.phoneOwners.set(np, new Set([ctx.from.first_name || 'Unknown']))
+    } else {
+      dupCount++
+      dupList.push(np)
     }
   })
 
+  // ===== Process usernames =====
   users.forEach(u => {
     const nu = u.toLowerCase()
-    if (history.users.has(nu) || data.usersMonth.has(nu)) {
-      dupCount++
-      dupList.push(nu)
-      const owners = history.userOwners.get(nu) || new Set()
-      owners.add(ctx.from.first_name || 'Unknown')
-      history.userOwners.set(nu, owners)
-    } else {
+    const owners = history.userOwners.get(nu) || new Set()
+    owners.add(ctx.from.id)
+    history.userOwners.set(nu, owners)
+    if (!history.users.has(nu)) {
       data.usersDay.add(nu)
       data.usersMonth.add(nu)
       history.users.add(nu)
-      history.userOwners.set(nu, new Set([ctx.from.first_name || 'Unknown']))
+    } else {
+      dupCount++
+      dupList.push(nu)
     }
   })
 
@@ -145,9 +149,11 @@ bot.on('text', async ctx => {
     const np = normalizePhone(p)
     const owners = history.phoneOwners.get(np)
     if (owners && owners.size > 1) {
-      const others = [...owners].filter(n => n !== (ctx.from.first_name || 'Unknown'))
-      if (others.length)
-        dupOwners.push(`⚠️ @${ctx.from.username || ctx.from.first_name} you are sharing number ${np} with ${others.join(', ')}`)
+      const others = [...owners].filter(id => id !== ctx.from.id)
+      if (others.length) {
+        const names = others.map(id => history.userNames.get(id) || 'Unknown')
+        dupOwners.push(`⚠️ ${displayName} you are sharing number ${np} with ${names.join(', ')}`)
+      }
     }
   })
 
@@ -155,9 +161,11 @@ bot.on('text', async ctx => {
     const nu = u.toLowerCase()
     const owners = history.userOwners.get(nu)
     if (owners && owners.size > 1) {
-      const others = [...owners].filter(n => n !== (ctx.from.first_name || 'Unknown'))
-      if (others.length)
-        dupOwners.push(`⚠️ @${ctx.from.username || ctx.from.first_name} you are sharing @${nu} with ${others.join(', ')}`)
+      const others = [...owners].filter(id => id !== ctx.from.id)
+      if (others.length) {
+        const names = others.map(id => history.userNames.get(id) || 'Unknown')
+        dupOwners.push(`⚠️ ${displayName} you are sharing @${nu} with ${names.join(', ')}`)
+      }
     }
   })
 
