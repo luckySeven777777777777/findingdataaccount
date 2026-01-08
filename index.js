@@ -142,8 +142,9 @@ bot.on('text', async ctx => {
     }
   })
 
-  // ===== Build duplicate owner message =====
-  let dupOwners = []
+  // ===== Build duplicate owner messages =====
+  let dupOwnersText = ''
+  const dupEntities = []
 
   phones.forEach(p => {
     const np = normalizePhone(p)
@@ -152,7 +153,16 @@ bot.on('text', async ctx => {
       const others = [...owners].filter(id => id !== ctx.from.id)
       if (others.length) {
         const names = others.map(id => history.userNames.get(id) || 'Unknown')
-        dupOwners.push(`⚠️ ${displayName} you are sharing number ${np} with ${names.join(', ')}`)
+        const text = `⚠️ You are sharing number ${np} with ${names.join(', ')}`
+        dupOwnersText += text + '\n'
+        others.forEach(id => {
+          dupEntities.push({
+            type: 'text_mention',
+            offset: dupOwnersText.indexOf(text),
+            length: text.length,
+            user: { id }
+          })
+        })
       }
     }
   })
@@ -163,8 +173,16 @@ bot.on('text', async ctx => {
     if (owners && owners.size > 1) {
       const others = [...owners].filter(id => id !== ctx.from.id)
       if (others.length) {
-        const names = others.map(id => history.userNames.get(id) || 'Unknown')
-        dupOwners.push(`⚠️ ${displayName} you are sharing @${nu} with ${names.join(', ')}`)
+        const text = `⚠️ You are sharing @${nu} with ${others.map(id => history.userNames.get(id) || 'Unknown').join(', ')}`
+        dupOwnersText += text + '\n'
+        others.forEach(id => {
+          dupEntities.push({
+            type: 'text_mention',
+            offset: dupOwnersText.indexOf(text),
+            length: text.length,
+            user: { id }
+          })
+        })
       }
     }
   })
@@ -180,9 +198,9 @@ bot.on('text', async ctx => {
 📈 Daily Increase: ${data.phonesDay.size + data.usersDay.size}
 📊 Monthly Total: ${data.phonesMonth.size + data.usersMonth.size}
 📅 Time: ${now}
-${dupOwners.length ? dupOwners.join('\n') : ''}`
+${dupOwnersText}`
 
-  await ctx.reply(msg)
+  await ctx.reply(msg, dupEntities.length ? { entities: dupEntities } : {})
 })
 
 // ===== Export (Admin Only) =====
