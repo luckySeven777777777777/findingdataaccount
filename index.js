@@ -90,6 +90,7 @@ bot.on('text', async ctx => {
 
   const phones = extractPhones(text)
   const users = extractMentions(text)
+  if (phones.length === 0 && users.length === 0) return
   let dupCount = 0
   let dupList = []
 
@@ -156,7 +157,9 @@ bot.on('text', async ctx => {
 📅 Time: ${now}
 ${dupOwners.length ? dupOwners.join('\n') : ''}`
 
+  if (dupCount > 0) {
   await ctx.reply(msg)
+}
 })
 
 // ===== Export =====
